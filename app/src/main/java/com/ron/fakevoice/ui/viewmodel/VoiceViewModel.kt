@@ -20,12 +20,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import androidx.compose.runtime.State
 import com.ron.fakevoice.data.api.VoiceInfo
+import com.ron.fakevoice.data.Constants
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 @HiltViewModel
 class VoiceViewModel @Inject constructor(
     private val repository: VoiceRepository,
     private val audioRecorder: AudioRecorder,
-    private val audioPlayer: AudioPlayer
+    private val audioPlayer: AudioPlayer,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val mediaPlayer = MediaPlayer()
@@ -59,24 +63,29 @@ class VoiceViewModel @Inject constructor(
         inputText = text
     }
 
-    fun createSpeech(voice: String) {
+    fun createSpeech(language: String, dialect: String, emotion: String, prosody: String, voice: String) {
         if (inputText.isBlank()) {
-            _uiState.value = UiState.Error("Please enter text")
+            _uiState.value = UiState.Error("请输入要转换的文字")
             return
         }
 
         viewModelScope.launch {
             try {
                 _uiState.value = UiState.Loading
-                repository.createSpeech(inputText, voice).collect { bytes ->
-                    // Save to temp file and play
+                
+                repository.createSpeech(
+                    text = inputText,
+                    model = Constants.DEFAULT_MODEL,
+                    voice = voice
+                ).collect { bytes ->
                     val tempFile = File.createTempFile("speech", ".mp3")
                     FileOutputStream(tempFile).use { it.write(bytes) }
                     playAudio(tempFile.absolutePath)
                     _uiState.value = UiState.Success
                 }
             } catch (e: Exception) {
-                _uiState.value = UiState.Error(e.message ?: "Failed to create speech")
+                println("Debug - Error: ${e.message}")
+                _uiState.value = UiState.Error("语音转换失败: ${e.message}")
             }
         }
     }
@@ -111,8 +120,11 @@ class VoiceViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.value = UiState.Loading
-                recordingFile = audioRecorder.startRecording()
+                // 创建临时文件
+                val recordingFile = File.createTempFile("recording", ".mp3", context.cacheDir)
+                audioRecorder.startRecording(recordingFile)
                 _isRecording.value = true
+                this@VoiceViewModel.recordingFile = recordingFile
                 _uiState.value = UiState.Success
             } catch (e: Exception) {
                 _uiState.value = UiState.Error(e.message ?: "Failed to start recording")
@@ -138,8 +150,9 @@ class VoiceViewModel @Inject constructor(
     fun cancelRecording() {
         viewModelScope.launch {
             try {
-                audioRecorder.cancelRecording()
+                audioRecorder.stopRecording()
                 _isRecording.value = false
+                recordingFile?.delete()
                 recordingFile = null
                 _uiState.value = UiState.Idle
             } catch (e: Exception) {

@@ -31,11 +31,14 @@ interface SiliconFlowApi {
 }
 
 data class CreateSpeechRequest(
-    val model: String = "fishaudio/fish-speech-1.5",
+    val model: String,
     val input: String,
-    val voice: String,
+    val voice: String? = null,
     val response_format: String = "mp3",
-    val stream: Boolean = true
+    val stream: Boolean = true,
+    val speed: Float = 1.0f,
+    val gain: Float = 0.0f,
+    val sample_rate: Int = 44100
 )
 
 data class UploadVoiceResponse(

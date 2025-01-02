@@ -4,63 +4,41 @@ import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
 import java.io.File
-import java.io.FileOutputStream
+import javax.inject.Inject
 
-class AudioRecorder(private val context: Context) {
+class AudioRecorder @Inject constructor(
+    private val context: Context
+) {
     private var recorder: MediaRecorder? = null
-    private var currentFile: File? = null
 
-    fun startRecording(): File {
-        val file = File(context.cacheDir, "recording_${System.currentTimeMillis()}.mp3")
-        currentFile = file
-
-        recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    private fun createRecorder(): MediaRecorder {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(context)
         } else {
+            @Suppress("DEPRECATION")
             MediaRecorder()
-        }.apply {
+        }
+    }
+
+    fun startRecording(outputFile: File) {
+        createRecorder().apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setOutputFile(FileOutputStream(file).fd)
+            setOutputFile(outputFile.absolutePath)
             
-            try {
-                prepare()
-                start()
-            } catch (e: Exception) {
-                throw RecordingException("Failed to start recording", e)
-            }
+            prepare()
+            start()
+            
+            recorder = this
         }
-
-        return file
     }
 
     fun stopRecording() {
-        try {
-            recorder?.apply {
-                stop()
-                release()
-            }
-        } catch (e: Exception) {
-            throw RecordingException("Failed to stop recording", e)
-        } finally {
-            recorder = null
-        }
-    }
-
-    fun cancelRecording() {
         recorder?.apply {
-            try {
-                stop()
-                release()
-            } catch (e: Exception) {
-                // Ignore exceptions during cancellation
-            }
+            stop()
+            release()
         }
-        currentFile?.delete()
         recorder = null
-        currentFile = null
     }
-}
-
-class RecordingException(message: String, cause: Throwable? = null) : Exception(message, cause) 
+} 

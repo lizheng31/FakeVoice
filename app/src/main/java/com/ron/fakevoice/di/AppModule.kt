@@ -23,8 +23,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideContext(application: Application): Context {
-        return application.applicationContext
+    fun provideContext(@ApplicationContext context: Context): Context {
+        return context
     }
 
     @Provides

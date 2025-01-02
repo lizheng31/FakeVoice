@@ -4,6 +4,7 @@ import com.ron.fakevoice.data.api.SiliconFlowApi
 import com.ron.fakevoice.data.api.CreateSpeechRequest
 import com.ron.fakevoice.data.api.DeleteVoiceRequest
 import com.ron.fakevoice.data.api.VoiceInfo
+import com.ron.fakevoice.data.Constants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -19,25 +20,36 @@ class VoiceRepository @Inject constructor(
     private val api: SiliconFlowApi
 ) {
     
-    suspend fun createSpeech(text: String, voice: String): Flow<ByteArray> = flow {
+    suspend fun createSpeech(text: String, model: String = Constants.DEFAULT_MODEL, voice: String): Flow<ByteArray> = flow {
         try {
-            val response = api.createSpeech(
-                CreateSpeechRequest(
-                    input = text,
-                    voice = voice,
-                    model = "fishaudio/fish-speech-1.5",
-                    response_format = "mp3",
-                    stream = true
-                )
+            println("Debug - Sending request with model: $model")
+            println("Debug - Request text: $text")
+            println("Debug - Using voice: $voice")
+            
+            val request = CreateSpeechRequest(
+                model = model,
+                input = text,
+                voice = voice,
+                response_format = "mp3",
+                stream = true,
+                speed = 1.0f,
+                gain = 0.0f,
+                sample_rate = 44100
             )
+            
+            println("Debug - Request body: $request")
+            
+            val response = api.createSpeech(request)
             
             if (response.isSuccessful) {
                 response.body()?.bytes()?.let { emit(it) }
             } else {
                 val errorBody = response.errorBody()?.string()
+                println("Debug - Error response: $errorBody")
                 throw Exception(errorBody ?: "Failed to create speech: ${response.code()}")
             }
         } catch (e: Exception) {
+            println("Debug - Network error: ${e.message}")
             throw Exception("Network error: ${e.message}")
         }
     }.flowOn(Dispatchers.IO)
