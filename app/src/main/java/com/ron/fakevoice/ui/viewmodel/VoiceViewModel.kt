@@ -55,6 +55,11 @@ class VoiceViewModel @Inject constructor(
 
     private var playbackJob: Job? = null
 
+    private val _referenceVoiceUri = MutableStateFlow<String?>(null)
+    val referenceVoiceUri: StateFlow<String?> = _referenceVoiceUri
+
+    private var isRecordingForReference = false
+
     init {
         loadVoiceList()
     }
@@ -63,7 +68,7 @@ class VoiceViewModel @Inject constructor(
         inputText = text
     }
 
-    fun createSpeech(language: String, dialect: String, emotion: String, prosody: String, voice: String) {
+    fun createSpeech(model: String, language: String, dialect: String, emotion: String, prosody: String, voice: String) {
         if (inputText.isBlank()) {
             _uiState.value = UiState.Error("请输入要转换的文字")
             return
@@ -75,8 +80,11 @@ class VoiceViewModel @Inject constructor(
                 
                 repository.createSpeech(
                     text = inputText,
-                    model = Constants.DEFAULT_MODEL,
-                    voice = voice
+                    model = model,
+                    voice = voice,
+                    language = language,
+                    dialect = dialect,
+                    emotion = emotion
                 ).collect { bytes ->
                     val tempFile = File.createTempFile("speech", ".mp3")
                     FileOutputStream(tempFile).use { it.write(bytes) }
@@ -139,7 +147,12 @@ class VoiceViewModel @Inject constructor(
                 audioRecorder.stopRecording()
                 _isRecording.value = false
                 recordingFile?.let { file ->
-                    uploadVoice(file)
+                    if (isRecordingForReference) {
+                        uploadReferenceVoice(file, inputText)
+                    } else {
+                        uploadVoice(file)
+                    }
+                    isRecordingForReference = false
                 }
             } catch (e: Exception) {
                 _uiState.value = UiState.Error(e.message ?: "Failed to stop recording")
@@ -232,6 +245,39 @@ class VoiceViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = UiState.Idle
+    }
+
+    fun uploadReferenceVoice(audioFile: File, text: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = UiState.Loading
+                val uri = repository.uploadReferenceVoice(audioFile, text)
+                _referenceVoiceUri.value = uri
+                _uiState.value = UiState.Success
+            } catch (e: Exception) {
+                _uiState.value = UiState.Error("上传参考音色失败: ${e.message}")
+            }
+        }
+    }
+
+    fun startRecordingReference() {
+        isRecordingForReference = true
+        startRecording()
+    }
+
+    fun stopRecordingAsReference() {
+        viewModelScope.launch {
+            try {
+                _uiState.value = UiState.Loading
+                audioRecorder.stopRecording()
+                _isRecording.value = false
+                recordingFile?.let { file ->
+                    uploadReferenceVoice(file, inputText)
+                }
+            } catch (e: Exception) {
+                _uiState.value = UiState.Error("停止录音失败: ${e.message}")
+            }
+        }
     }
 }
 

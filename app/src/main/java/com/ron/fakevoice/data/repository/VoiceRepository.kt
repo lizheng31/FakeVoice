@@ -20,15 +20,29 @@ class VoiceRepository @Inject constructor(
     private val api: SiliconFlowApi
 ) {
     
-    suspend fun createSpeech(text: String, model: String = Constants.DEFAULT_MODEL, voice: String): Flow<ByteArray> = flow {
+    suspend fun createSpeech(text: String, model: String = Constants.DEFAULT_MODEL, voice: String, language: String, dialect: String, emotion: String): Flow<ByteArray> = flow {
         try {
-            println("Debug - Sending request with model: $model")
-            println("Debug - Request text: $text")
-            println("Debug - Using voice: $voice")
+            // 构建富文本控制标记
+            val controlledText = buildString {
+                if (model == "FunAudioLLM/CosyVoice2-0.5B") {
+                    // 直接使用文本，不添加任何标记
+                    append(text)
+                } else {
+                    append(text)
+                }
+            }
+
+            println("""
+                ┌──────────── Speech Request ────────────
+                │ Model: $model
+                │ Voice: $voice
+                │ Text: $controlledText
+                └─────────────────────────────────────────
+            """.trimIndent())
             
             val request = CreateSpeechRequest(
                 model = model,
-                input = text,
+                input = controlledText,
                 voice = voice,
                 response_format = "mp3",
                 stream = true,
@@ -37,19 +51,40 @@ class VoiceRepository @Inject constructor(
                 sample_rate = 44100
             )
             
-            println("Debug - Request body: $request")
+            println("""
+                ┌──────────── Request Body ────────────
+                │ ${request.toString()}
+                └─────────────────────────────────────
+            """.trimIndent())
             
             val response = api.createSpeech(request)
             
             if (response.isSuccessful) {
+                println("""
+                    ┌──────────── Response Success ────────────
+                    │ Status Code: ${response.code()}
+                    │ Content Length: ${response.body()?.contentLength() ?: 0} bytes
+                    └──────────────────────────────────────────
+                """.trimIndent())
+                
                 response.body()?.bytes()?.let { emit(it) }
             } else {
                 val errorBody = response.errorBody()?.string()
-                println("Debug - Error response: $errorBody")
+                println("""
+                    ┌──────────── Response Error ────────────
+                    │ Status Code: ${response.code()}
+                    │ Error Body: $errorBody
+                    └─────────────────────────────────────────
+                """.trimIndent())
                 throw Exception(errorBody ?: "Failed to create speech: ${response.code()}")
             }
         } catch (e: Exception) {
-            println("Debug - Network error: ${e.message}")
+            println("""
+                ┌──────────── Network Error ────────────
+                │ Error: ${e.message}
+                │ Stack Trace: ${e.stackTraceToString()}
+                └─────────────────────────────────────────
+            """.trimIndent())
             throw Exception("Network error: ${e.message}")
         }
     }.flowOn(Dispatchers.IO)
@@ -87,6 +122,59 @@ class VoiceRepository @Inject constructor(
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string()
             throw Exception(errorBody ?: "Failed to delete voice")
+        }
+    }
+
+    suspend fun uploadReferenceVoice(audioFile: File, text: String): String {
+        try {
+            println("""
+                ┌──────────── Upload Reference Voice Request ────────────
+                │ File: ${audioFile.name} (${audioFile.length()} bytes)
+                │ Text: $text
+                │ Model: ${Constants.DEFAULT_MODEL}
+                └───────────────────────────────────────────────────────
+            """.trimIndent())
+            
+            val fileRequestBody = audioFile.asRequestBody("audio/*".toMediaTypeOrNull())
+            val filePart = MultipartBody.Part.createFormData("file", audioFile.name, fileRequestBody)
+            val modelPart = Constants.DEFAULT_MODEL.toRequestBody("text/plain".toMediaTypeOrNull())
+            val customNamePart = "reference_voice_${System.currentTimeMillis()}".toRequestBody("text/plain".toMediaTypeOrNull())
+            val textPart = text.toRequestBody("text/plain".toMediaTypeOrNull())
+
+            val response = api.uploadReferenceVoice(
+                file = filePart,
+                model = modelPart,
+                customName = customNamePart,
+                text = textPart
+            )
+
+            if (response.isSuccessful) {
+                val uri = response.body()?.uri
+                println("""
+                    ┌──────────── Upload Success ────────────
+                    │ Status Code: ${response.code()}
+                    │ URI: $uri
+                    └──────────────────────────────────────
+                """.trimIndent())
+                return uri ?: throw Exception("Upload response is empty")
+            } else {
+                val errorBody = response.errorBody()?.string()
+                println("""
+                    ┌──────────── Upload Error ────────────
+                    │ Status Code: ${response.code()}
+                    │ Error Body: $errorBody
+                    └────────────────────────────────────
+                """.trimIndent())
+                throw Exception(errorBody ?: "Failed to upload reference voice")
+            }
+        } catch (e: Exception) {
+            println("""
+                ┌──────────── Upload Error ────────────
+                │ Error: ${e.message}
+                │ Stack Trace: ${e.stackTraceToString()}
+                └────────────────────────────────────
+            """.trimIndent())
+            throw Exception("Failed to upload reference voice: ${e.message}")
         }
     }
 } 

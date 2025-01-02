@@ -38,12 +38,14 @@ fun MainScreen(
     var selectedEmotion by remember { mutableStateOf(Constants.EMOTIONS[0].first) }
     var selectedProsody by remember { mutableStateOf(Constants.PROSODY_CONTROLS[0].first) }
     var selectedVoice by remember { mutableStateOf(Constants.PRESET_VOICES[0].first) }
+    var selectedModel by remember { mutableStateOf(Constants.AVAILABLE_MODELS[0].first) }
     
     var expandedLanguage by remember { mutableStateOf(false) }
     var expandedDialect by remember { mutableStateOf(false) }
     var expandedEmotion by remember { mutableStateOf(false) }
     var expandedProsody by remember { mutableStateOf(false) }
     var expandedVoice by remember { mutableStateOf(false) }
+    var expandedModel by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -58,6 +60,37 @@ fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 模型选择器
+            ExposedDropdownMenuBox(
+                expanded = expandedModel,
+                onExpandedChange = { expandedModel = !expandedModel }
+            ) {
+                OutlinedTextField(
+                    value = selectedModel,
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedModel) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    label = { Text("选择模型") }
+                )
+                ExposedDropdownMenu(
+                    expanded = expandedModel,
+                    onDismissRequest = { expandedModel = false }
+                ) {
+                    Constants.AVAILABLE_MODELS.forEach { (display, _) ->
+                        DropdownMenuItem(
+                            text = { Text(display) },
+                            onClick = {
+                                selectedModel = display
+                                expandedModel = false
+                            }
+                        )
+                    }
+                }
+            }
+
             // 语言选择器
             ExposedDropdownMenuBox(
                 expanded = expandedLanguage,
@@ -225,18 +258,17 @@ fun MainScreen(
             // 转换按钮
             Button(
                 onClick = {
+                    val model = Constants.AVAILABLE_MODELS.find { it.first == selectedModel }?.second ?: Constants.DEFAULT_MODEL
                     val language = Constants.LANGUAGES.find { it.first == selectedLanguage }?.second ?: "zh"
                     val dialect = Constants.DIALECTS.find { it.first == selectedDialect }?.second ?: "mandarin"
                     val emotion = Constants.EMOTIONS.find { it.first == selectedEmotion }?.second ?: "normal"
                     val prosody = Constants.PROSODY_CONTROLS.find { it.first == selectedProsody }?.second ?: "speed:1.0"
                     val voice = Constants.PRESET_VOICES.find { it.first == selectedVoice }?.second ?: "fishaudio/fish-speech-1.5:alex"
                     
-                    viewModel.createSpeech(language, dialect, emotion, prosody, voice)
+                    viewModel.createSpeech(model, language, dialect, emotion, prosody, voice)
                 },
                 enabled = !isRecording && uiState !is UiState.Loading && viewModel.inputText.isNotBlank()
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
                 Text("转换语音")
             }
 
@@ -245,7 +277,8 @@ fun MainScreen(
                 isRecording = isRecording,
                 onStartRecording = viewModel::startRecording,
                 onStopRecording = viewModel::stopRecording,
-                enabled = uiState !is UiState.Loading
+                enabled = uiState !is UiState.Loading,
+                viewModel = viewModel
             )
 
             // 音频播放控制器
@@ -292,6 +325,16 @@ fun MainScreen(
                 }
                 else -> {}
             }
+
+            // 显示当前使用的参考音色
+            val referenceVoiceUri by viewModel.referenceVoiceUri.collectAsState()
+            if (referenceVoiceUri != null) {
+                Text(
+                    "当前使用的参考音色: ${referenceVoiceUri!!.substringAfter("speech:")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
         }
     }
 
@@ -330,21 +373,57 @@ fun RecordButton(
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
     enabled: Boolean,
+    viewModel: VoiceViewModel,
     modifier: Modifier = Modifier
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (isRecording) 1.2f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(500),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "recording_animation"
-    )
+    var showRecordTypeDialog by remember { mutableStateOf(false) }
+    
+    // 录音类型选择对话框
+    if (showRecordTypeDialog) {
+        AlertDialog(
+            onDismissRequest = { showRecordTypeDialog = false },
+            title = { Text("选择录音用途") },
+            text = { Text("请选择录音的用途") },
+            confirmButton = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            onStartRecording()
+                            showRecordTypeDialog = false
+                        }
+                    ) {
+                        Text("保存为语音记录")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.startRecordingReference()
+                            showRecordTypeDialog = false
+                        }
+                    ) {
+                        Text("设置为参考音色")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecordTypeDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 
     Button(
-        onClick = if (isRecording) onStopRecording else onStartRecording,
+        onClick = {
+            if (isRecording) {
+                onStopRecording()
+            } else {
+                showRecordTypeDialog = true
+            }
+        },
         enabled = enabled,
-        modifier = modifier.scale(if (isRecording) scale else 1f),
+        modifier = modifier,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (isRecording) MaterialTheme.colorScheme.error 
                            else MaterialTheme.colorScheme.primary

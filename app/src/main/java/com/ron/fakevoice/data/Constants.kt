@@ -1,7 +1,16 @@
 package com.ron.fakevoice.data
 
 object Constants {
-    const val DEFAULT_MODEL = "fishaudio/fish-speech-1.5"
+    // 可用的模型列表
+    val AVAILABLE_MODELS = listOf(
+        "CosyVoice2-0.5B (支持方言)" to "FunAudioLLM/CosyVoice2-0.5B",
+        "Fish Speech 1.5 (多语言)" to "fishaudio/fish-speech-1.5",
+        "Fish Speech 1.4" to "fishaudio/fish-speech-1.4",
+        "GPT-SoVITS" to "RVC-Boss/GPT-SoVITS"
+    )
+
+    // 默认模型
+    const val DEFAULT_MODEL = "FunAudioLLM/CosyVoice2-0.5B"
     
     // 预置音色选项
     val PRESET_VOICES = listOf(

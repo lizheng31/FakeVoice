@@ -28,6 +28,15 @@ interface SiliconFlowApi {
     suspend fun deleteVoice(
         @Body request: DeleteVoiceRequest
     ): Response<Unit>
+
+    @Multipart
+    @POST("uploads/audio/voice")
+    suspend fun uploadReferenceVoice(
+        @Part file: MultipartBody.Part,
+        @Part("model") model: RequestBody,
+        @Part("customName") customName: RequestBody,
+        @Part("text") text: RequestBody
+    ): Response<UploadReferenceVoiceResponse>
 }
 
 data class CreateSpeechRequest(
@@ -56,4 +65,8 @@ data class VoiceInfo(
 
 data class DeleteVoiceRequest(
     val uri: String
+)
+
+data class UploadReferenceVoiceResponse(
+    val uri: String  // 返回的参考音色 ID
 ) 
